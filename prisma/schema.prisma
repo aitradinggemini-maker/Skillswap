@@ -1,0 +1,273 @@
+// Prisma Schema for Skillswap Architecture
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 1. User Entity
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("USER") // USER, ADMIN, MODERATOR
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  profile                   Profile?
+  creditAccount             CreditAccount?
+  skills                    UserSkill[]
+  skillVerifications        SkillVerification[]
+  tasksAsRequester          SkillTask[]         @relation("TaskRequester")
+  taskApplications          TaskApplication[]   @relation("Applicant")
+  taskAgreementsAsProvider  TaskAgreement[]     @relation("TaskProvider")
+  conversationsAsUser1      Conversation[]      @relation("ConversationUser1")
+  conversationsAsUser2      Conversation[]      @relation("ConversationUser2")
+  messagesSent              Message[]           @relation("MessageSender")
+  ratingsGiven              Rating[]            @relation("RatingReviewer")
+  ratingsReceived           Rating[]            @relation("RatingTarget")
+  reportsFiled              Report[]            @relation("ReportReporter")
+  reportsReceived           Report[]            @relation("ReportTargetUser")
+  resources                 Resource[]          @relation("ResourceAuthor")
+  notifications             Notification[]      @relation("UserNotification")
+}
+
+// 2. Profile Entity
+model Profile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName       String
+  bio            String?
+  avatarUrl      String?
+  university     String?
+  major          String?
+  graduationYear Int?
+  ratingAverage  Float    @default(0.0)
+  ratingCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// 3. Skill Entity
+model Skill {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  category    String   // e.g., Programming, Design, Writing, Math
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  userSkills         UserSkill[]
+  skillVerifications SkillVerification[]
+  taskTags           TaskTag[]
+}
+
+// 4. UserSkill Entity (Junction table for User and Skill)
+model UserSkill {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId          String
+  skill            Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  proficiencyLevel String   @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+  isVerified       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, skillId])
+}
+
+// 5. SkillVerification Entity
+model SkillVerification {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId     String
+  skill       Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  testScore   Float
+  status      String    @default("PENDING") // PENDING, PASSED, FAILED
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// 6. SkillTask Entity
+model SkillTask {
+  id             String   @id @default(uuid())
+  requesterId    String
+  requester      User     @relation("TaskRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  creditPrice    Int
+  estimatedHours Float?
+  status         String   @default("OPEN") // OPEN, IN_PROGRESS, COMPLETED, CANCELLED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relationships
+  tags          TaskTag[]
+  applications  TaskApplication[]
+  agreement     TaskAgreement?
+  conversations Conversation[]
+}
+
+// 7. TaskTag Entity
+model TaskTag {
+  id      String    @id @default(uuid())
+  taskId  String
+  task    SkillTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  skillId String
+  skill   Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, skillId])
+}
+
+// 8. TaskApplication Entity
+model TaskApplication {
+  id            String    @id @default(uuid())
+  taskId        String
+  task          SkillTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  applicantId   String
+  applicant     User      @relation("Applicant", fields: [applicantId], references: [id], onDelete: Cascade)
+  pitch         String
+  proposedHours Float?
+  status        String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// 9. TaskAgreement Entity
+model TaskAgreement {
+  id           String    @id @default(uuid())
+  taskId       String    @unique
+  task         SkillTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  providerId   String
+  provider     User      @relation("TaskProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  creditAmount Int
+  status       String    @default("ACTIVE") // ACTIVE, COMPLETED, DISPUTED, CANCELLED
+  agreedAt     DateTime  @default(now())
+  completedAt  DateTime?
+
+  // Relationships
+  ratings Rating[]
+}
+
+// 10. Conversation Entity
+model Conversation {
+  id        String     @id @default(uuid())
+  user1Id   String
+  user1     User       @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id   String
+  user2     User       @relation("ConversationUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      SkillTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relationships
+  messages Message[]
+}
+
+// 11. Message Entity
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}
+
+// 12. CreditAccount Entity
+model CreditAccount {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance       Int      @default(100)
+  frozenBalance Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  outgoingTransactions CreditTransaction[] @relation("SenderAccount")
+  incomingTransactions CreditTransaction[] @relation("RecipientAccount")
+}
+
+// 13. CreditTransaction Entity
+model CreditTransaction {
+  id                 String         @id @default(uuid())
+  senderAccountId    String?
+  senderAccount      CreditAccount? @relation("SenderAccount", fields: [senderAccountId], references: [id], onDelete: SetNull)
+  recipientAccountId String
+  recipientAccount   CreditAccount  @relation("RecipientAccount", fields: [recipientAccountId], references: [id], onDelete: Cascade)
+  amount             Int
+  transactionType    String         // INITIAL_GRANT, TASK_ESCROW, TASK_PAYMENT, REFUND, ADJUSTMENT
+  referenceId        String?
+  description        String?
+  createdAt          DateTime       @default(now())
+}
+
+// 14. Rating Entity
+model Rating {
+  id          String         @id @default(uuid())
+  reviewerId  String
+  reviewer    User           @relation("RatingReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+  targetId    String
+  target      User           @relation("RatingTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  agreementId String?
+  agreement   TaskAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
+  score       Int            // 1 to 5
+  feedback    String?
+  createdAt   DateTime       @default(now())
+}
+
+// 15. Report Entity
+model Report {
+  id           String   @id @default(uuid())
+  reporterId   String
+  reporter     User     @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUserId String?
+  targetUser   User?    @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetType   String   // USER, TASK, MESSAGE, RESOURCE
+  targetId     String
+  reason       String
+  status       String   @default("PENDING") // PENDING, INVESTIGATING, RESOLVED, DISMISSED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// 16. Resource Entity
+model Resource {
+  id           String   @id @default(uuid())
+  authorId     String
+  author       User     @relation("ResourceAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title        String
+  description  String
+  resourceType String   // NOTES, CODE, REPOSITORY, TEMPLATE, OTHER
+  fileUrl      String?
+  externalLink String?
+  isPublic     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// 17. Notification Entity
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation("UserNotification", fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // TASK_UPDATE, MESSAGE_RECEIVED, CREDIT_RECEIVED, SYSTEM
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+}
